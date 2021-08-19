@@ -109,3 +109,22 @@ def get_trade_feat(file_path):
     del group_df["time_id"]
 
     return group_df
+
+
+def get_time_id_feat(df):
+    # Get realized volatility columns
+    vol_cols = [
+        "book_log_return1_realized_volatility", "book_log_return2_realized_volatility",
+        "book_last_300_log_return1_realized_volatility", "book_last_300_log_return2_realized_volatility",
+        "trade_log_return_realized_volatility", "trade_last_300_log_return_realized_volatility"
+    ]
+
+    # group by the time id
+    group_df = df.groupby(["time_id"])[vol_cols].agg(["mean", "std", "max", "min", "skew"])
+    group_df.columns = [f"time_id_{f[0]}_{f[1]}" for f in group_df.columns]
+    group_df.reset_index(inplace=True)
+
+    # merge with original dataframe
+    df = df.merge(group_df, on="time_id", how="left")
+
+    return df
