@@ -157,3 +157,27 @@ def get_time_stock_feat(df):
     df = df.merge(df_stock_id, on="stock_id", how="left")
 
     return df
+
+
+def get_cluster_feat(df, mapping):
+    df["cluster"] = df["stock_id"].map(mapping)
+
+    usecols = [
+        "book_log_return_wap1_realized_volatility",
+        "book_total_volume_mean",
+        "trade_size_sum",
+        "trade_order_count_sum",
+        "book_price_spread1_mean",
+        "book_bid_spread_mean",
+        "book_ask_spread_mean",
+        "book_volume_imbalance_mean",
+        "book_bid_ask_spread_mean",
+    ]
+    group_df = df.groupby(["time_id", "cluster"], as_index=False)[usecols].mean()
+    group_df = group_df.pivot(index="time_id", columns="cluster")
+    group_df.columns = [f"{f[0]}_c{f[1]}" for f in group_df.columns]
+    group_df.reset_index(inplace=True)
+
+    df = df.merge(group_df, on="time_id", how="left")
+
+    return df
