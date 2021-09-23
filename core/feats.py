@@ -2,24 +2,24 @@ import numpy as np
 import pandas as pd
 
 
-def calc_wap(bid_price, bid_size, ask_price, ask_size):
-    return (bid_price * ask_size + ask_price * bid_size) / (bid_size + ask_size)
+def calc_wap(bpr, bsz, apr, asz):
+    return (bpr * asz + apr * bsz) / (bsz + asz)
 
 
-def log_return(list_stock_prices):
-    return np.log(list_stock_prices).diff()
+def log_return(x):
+    return np.log(x).diff()
 
 
-def realized_volatility(series):
-    return np.sqrt(np.sum(series**2))
+def rv(x):
+    return np.sqrt(np.sum(x**2))
 
 
-def abs_sum(series):
-    return np.sum(np.abs(series))
+def abs_sum(x):
+    return np.sum(np.abs(x))
 
 
-def max_sub_min(series):
-    return np.max(series) - np.min(series)
+def max_sub_min(x):
+    return np.max(x) - np.min(x)
 
 
 def get_book_feat(file_path):
@@ -34,41 +34,60 @@ def get_book_feat(file_path):
     df["log_return_wap1"] = df.groupby("time_id")["wap1"].apply(log_return)
     df["log_return_wap2"] = df.groupby("time_id")["wap2"].apply(log_return)
 
-    df["wap_balance"] = abs(df["wap1"] - df["wap2"])
+    df["wap_balance"] = df["wap1"] - df["wap2"]
 
     df["price_spread1"] = (apr1 - bpr1) / ((apr1 + bpr1) / 2)
     df["price_spread2"] = (apr2 - bpr2) / ((apr2 + bpr2) / 2)
     df["bid_spread"] = bpr1 - bpr2
-    df["ask_spread"] = apr1 - apr2
-    df["bid_ask_spread"] = abs((bpr1 - bpr2) - (apr1 - apr2))
+    df["ask_spread"] = apr2 - apr1
+    df["bid_ask_spread"] = (bpr1 - bpr2) - (apr1 - apr2)
     df["total_volume"] = (asz1 + asz2) + (bsz1 + bsz2)
-    df["volume_imbalance"] = abs((asz1 + asz2) - (bsz1 + bsz2))
+    df["volume_imbalance"] = (asz1 + asz2) - (bsz1 + bsz2)
 
-    # dict for aggregate
     agg = {
         "time_id": ["count"],
-        "wap1": ["mean", max_sub_min, "std"],
-        "wap2": ["mean", max_sub_min, "std"],
-        "log_return_wap1": [abs_sum, "mean", "std", realized_volatility],
-        "log_return_wap2": [abs_sum, "mean", "std", realized_volatility],
-        "wap_balance": ["sum", "mean", "std"],
+        "wap1": ["mean", "std", max_sub_min],
+        "wap2": ["mean", "std", max_sub_min],
+        "log_return_wap1": ["mean", "std", abs_sum, rv],
+        "log_return_wap2": ["mean", "std", abs_sum, rv],
+        "wap_balance": ["mean", "std", abs_sum],
         "price_spread1": ["sum", "mean", "std"],
         "price_spread2": ["sum", "mean", "std"],
         "bid_spread": ["sum", "mean", "std"],
         "ask_spread": ["sum", "mean", "std"],
-        "bid_ask_spread": ["sum", "mean", "std"],
+        "bid_ask_spread": ["mean", "std", abs_sum],
         "total_volume": ["sum", "mean", "std"],
-        "volume_imbalance": ["sum", "mean", "std"],
+        "volume_imbalance": ["mean", "std", abs_sum],
     }
 
-    # groupby / all seconds
     group_df = df.groupby(["time_id"]).agg(agg)
     group_df.columns = [f"book_{f[0]}_{f[1]}" for f in group_df.columns]
     group_df.reset_index(inplace=True)
 
-    # groupby / last XX seconds
-    last_seconds = [300]
+    # realized volatility diff
+    df["5min"] = pd.cut(df["seconds_in_bucket"], bins=np.linspace(0, 600, 3), right=False).cat.codes
+    temp = df.groupby(["time_id", "5min"]).agg({
+        "log_return_wap1": [rv],
+        "log_return_wap2": [rv],
+    })
+    temp.columns = [f"book_{f[0]}_{f[1]}" for f in temp.columns]
+    temp.reset_index(inplace=True)
+    for feat in ["book_log_return_wap1_rv", "book_log_return_wap2_rv"]:
+        temp[f"{feat}_shift"] = temp[feat].shift(1)
 
+    temp = temp.loc[temp["5min"] == 1]
+    temp.reset_index(drop=True, inplace=True)
+
+    for feat in ["book_log_return_wap1_rv", "book_log_return_wap2_rv"]:
+        temp[f"{feat}_diff"] = temp[feat] - temp[f"{feat}_shift"]
+        temp[f"{feat}_pct_change"] = (temp[feat] - temp[f"{feat}_shift"]) / (temp[f"{feat}_shift"] + 1e-6)
+
+        temp.drop([feat, f"{feat}_shift"], axis=1, inplace=True)
+    del temp["5min"]
+
+    group_df = group_df.merge(temp, on="time_id", how="left")
+
+    last_seconds = [300]
     for second in last_seconds:
         second = 600 - second
 
@@ -78,7 +97,6 @@ def get_book_feat(file_path):
 
         group_df = group_df.merge(group_df_sec, on="time_id", how="left")
 
-    # create row_id
     stock_id = file_path.split("=")[1]
     group_df["row_id"] = group_df["time_id"].map(lambda x: f"{stock_id}-{x}")
     del group_df["time_id"]
@@ -88,20 +106,21 @@ def get_book_feat(file_path):
 
 def get_trade_feat(file_path):
     df = pd.read_parquet(file_path)
+
+    df["amount"] = df["price"] * df["size"]
     df["log_return"] = df.groupby("time_id")["price"].apply(log_return)
     df["size_div_order_count"] = df["price"] / df["order_count"]
-    df["seconds_in_bucket_diff"] = df["seconds_in_bucket"].diff()
-    df["total_price"] = df["price"] * df["size"]
+    df["seconds_diff"] = df.groupby("time_id")["seconds_in_bucket"].diff()
 
     agg = {
         "time_id": ["count"],
-        "price": [max_sub_min, "mean", "std"],
-        "total_price": ["sum", max_sub_min, "mean", "std"],
-        "log_return": [abs_sum, "mean", "std", realized_volatility],
-        "seconds_in_bucket_diff": [abs_sum, "mean", "std", realized_volatility],
+        "price": ["mean", "std", max_sub_min],
+        "log_return": ["mean", "std", abs_sum, rv],
         "size": ["sum", max_sub_min],
-        "size_div_order_count": ["mean", "std"],
         "order_count": ["sum", max_sub_min],
+        "amount": ["sum", "mean", "std", max_sub_min],
+        "size_div_order_count": ["mean", "std"],
+        "seconds_diff": ["mean", "std", abs_sum, rv],
     }
 
     group_df = df.groupby("time_id").agg(agg)
@@ -109,9 +128,29 @@ def get_trade_feat(file_path):
     group_df.reset_index(inplace=True)
     group_df.fillna(0, inplace=True)
 
-    # groupby / last XX seconds
-    last_seconds = [300]
+    # realized volatility diff
+    df["5min"] = pd.cut(df["seconds_in_bucket"], bins=np.linspace(0, 600, 3), right=False).cat.codes
+    temp = df.groupby(["time_id", "5min"]).agg({
+        "log_return": [rv],
+    })
+    temp.columns = [f"trade_{f[0]}_{f[1]}" for f in temp.columns]
+    temp.reset_index(inplace=True)
+    for feat in ["trade_log_return_rv"]:
+        temp[f"{feat}_shift"] = temp[feat].shift(1)
 
+    temp = temp.loc[temp["5min"] == 1]
+    temp.reset_index(drop=True, inplace=True)
+
+    for feat in ["trade_log_return_rv"]:
+        temp[f"{feat}_diff"] = temp[feat] - temp[f"{feat}_shift"]
+        temp[f"{feat}_pct_change"] = (temp[feat] - temp[f"{feat}_shift"]) / (temp[f"{feat}_shift"] + 1e-6)
+
+        temp.drop([feat, f"{feat}_shift"], axis=1, inplace=True)
+    del temp["5min"]
+
+    group_df = group_df.merge(temp, on="time_id", how="left")
+
+    last_seconds = [300]
     for second in last_seconds:
         second = 600 - second
 
@@ -132,23 +171,23 @@ def get_trade_feat(file_path):
 def get_time_stock_feat(df):
     # Get realized volatility columns
     vol_cols = [
-        "book_log_return_wap1_realized_volatility",
-        "book_log_return_wap2_realized_volatility",
-        "trade_log_return_realized_volatility",
-        "trade_seconds_in_bucket_diff_realized_volatility",
-        "book_last_300_log_return_wap1_realized_volatility",
-        "book_last_300_log_return_wap2_realized_volatility",
-        "trade_last_300_log_return_realized_volatility",
-        "trade_last_300_seconds_in_bucket_diff_realized_volatility",
+        "book_log_return_wap1_rv",
+        "book_log_return_wap2_rv",
+        "trade_log_return_rv",
+        "trade_seconds_diff_rv",
+        "book_last_300_log_return_wap1_rv",
+        "book_last_300_log_return_wap2_rv",
+        "trade_last_300_log_return_rv",
+        "trade_last_300_seconds_diff_rv",
     ]
 
     # group by the stock id
-    df_stock_id = df.groupby(["stock_id"])[vol_cols].agg(["mean", "std"])
+    df_stock_id = df.groupby(["stock_id"])[vol_cols].agg(["mean", "std", "skew"])
     df_stock_id.columns = [f"stock_id_{f[0]}_{f[1]}" for f in df_stock_id.columns]
     df_stock_id.reset_index(inplace=True)
 
     # group by the time id
-    df_time_id = df.groupby(["time_id"])[vol_cols].agg(["mean", "std"])
+    df_time_id = df.groupby(["time_id"])[vol_cols].agg(["mean", "std", "skew"])
     df_time_id.columns = [f"time_id_{f[0]}_{f[1]}" for f in df_time_id.columns]
     df_time_id.reset_index(inplace=True)
 
