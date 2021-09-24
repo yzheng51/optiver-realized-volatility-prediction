@@ -225,6 +225,7 @@ def get_cluster_feat(df, mapping):
 
 def get_feat(stock_ids, is_train=True, n_jobs=-1):
     data_dir = "../input/optiver-realized-volatility-prediction"
+
     def ufunc(stock_id):
         if is_train:
             file_path_book = f"{data_dir}/book_train.parquet/stock_id={stock_id}"
