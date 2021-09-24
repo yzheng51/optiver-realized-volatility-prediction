@@ -165,6 +165,7 @@ feats = [
     "stock_id_trade_last_300_seconds_diff_rv_mean",
     "stock_id_trade_last_300_seconds_diff_rv_std",
 ]
+print(f"Number of features: {len(feats)}")
 x_train = train[feats]
 y_train = train["target"].values
 
@@ -176,10 +177,10 @@ rmspe_mean = 0
 
 
 for i, (train_idx, valid_idx) in enumerate(kfold.split(x_train)):
-    print(f'Stacking: {i + 1}/{n_splits}... ')
+    print(f"Fold: {i + 1}/{n_splits}... ")
     model = lgb.LGBMRegressor(
         boosting="gbdt",
-        importance_type='gain',
+        importance_type="gain",
         learning_rate=0.01,
         max_depth=7,
         num_leaves=80,
@@ -196,9 +197,6 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(x_train)):
     model.fit(
         x_train.iloc[train_idx], y_train[train_idx],
         sample_weight=1 / np.square(y_train[train_idx]),
-        eval_set=[(x_train.iloc[valid_idx], y_train[valid_idx])],
-        eval_metric=lambda y_true, y_pred: [lgb_rmspe(y_true, y_pred), lgb_rmse(y_true, y_pred)],
-        verbose=200,
     )
     y_valid = model.predict(x_train.iloc[valid_idx])
 
@@ -206,6 +204,7 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(x_train)):
     feats_impt += model.feature_importances_ / n_splits
     rmspe_mean += rmspe(y_train[valid_idx], y_valid)
     model.booster_.save_model(f"../models/{i + 1}.txt")
+    print(f"RMSPE {rmspe(y_train[valid_idx], y_valid):.6f}")
 
 feats_impt /= n_splits
 rmspe_mean /= n_splits
@@ -216,5 +215,7 @@ importance = pd.DataFrame(zip(feats, feats_impt), columns=["feat", "score"]) \
     .sort_values("score", ascending=False) \
     .reset_index(drop=True)
 importance.to_csv("../models/impt.csv", index=False)
+
+timer.stop()
 
 print(f"RMSPE mean is: {rmspe_mean:.6f}")
