@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 
 
 def calc_wap(bpr, bsz, apr, asz):
@@ -218,5 +219,23 @@ def get_cluster_feat(df, mapping):
     group_df.reset_index(inplace=True)
 
     df = df.merge(group_df, on="time_id", how="left")
+
+    return df
+
+
+def get_feat(stock_ids, is_train=True, n_jobs=-1):
+    data_dir = "../input/optiver-realized-volatility-prediction"
+    def ufunc(stock_id):
+        if is_train:
+            file_path_book = f"{data_dir}/book_train.parquet/stock_id={stock_id}"
+            file_path_trade = f"{data_dir}/trade_train.parquet/stock_id={stock_id}"
+        else:
+            file_path_book = f"{data_dir}/book_test.parquet/stock_id={stock_id}"
+            file_path_trade = f"{data_dir}/trade_test.parquet/stock_id={stock_id}"
+
+        return pd.merge(get_book_feat(file_path_book), get_trade_feat(file_path_trade), on="row_id", how="left")
+
+    df = Parallel(n_jobs=n_jobs, verbose=1)(delayed(ufunc)(stock_id) for stock_id in stock_ids)
+    df = pd.concat(df, ignore_index=True)
 
     return df
