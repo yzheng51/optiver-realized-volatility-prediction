@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 from sklearn.model_selection import KFold
-from joblib import Parallel, delayed
 
-from feats import get_book_feat, get_trade_feat, get_time_stock_feat
+from feats import get_feat, get_time_stock_feat
+from config import GBM_FEATS
 from utils.timer import Timer
 from utils.evaluate import rmspe, lgb_rmspe, lgb_rmse
 # -------------------------------------------------------------------------------------------------
@@ -19,24 +19,6 @@ dtypes = {"stock_id": "int16", "time_id": "int32", "target": "float64"}
 n_splits = 5
 
 timer = Timer()
-# -------------------------------------------------------------------------------------------------
-
-
-def get_feat(stock_ids, is_train=True, n_jobs=-1):
-    def ufunc(stock_id):
-        if is_train:
-            file_path_book = f"{DATA_DIR}/book_train.parquet/stock_id={stock_id}"
-            file_path_trade = f"{DATA_DIR}/trade_train.parquet/stock_id={stock_id}"
-        else:
-            file_path_book = f"{DATA_DIR}/book_test.parquet/stock_id={stock_id}"
-            file_path_trade = f"{DATA_DIR}/trade_test.parquet/stock_id={stock_id}"
-
-        return pd.merge(get_book_feat(file_path_book), get_trade_feat(file_path_trade), on="row_id", how="left")
-
-    df = Parallel(n_jobs=n_jobs, verbose=1)(delayed(ufunc)(stock_id) for stock_id in stock_ids)
-    df = pd.concat(df, ignore_index=True)
-
-    return df
 # -------------------------------------------------------------------------------------------------
 
 
@@ -57,122 +39,17 @@ timer.stop()
 # -------------------------------------------------------------------------------------------------
 
 
-print("Traing model...")
+print("Training model...")
 timer.start()
 
-feats = [
-    "book_time_id_count",
-    "book_wap1_mean",
-    "book_wap1_std",
-    "book_wap1_max_sub_min",
-    "book_wap2_mean",
-    "book_wap2_std",
-    "book_wap2_max_sub_min",
-    "book_log_return_wap1_mean",
-    "book_log_return_wap1_std",
-    "book_log_return_wap1_abs_sum",
-    "book_log_return_wap1_rv",
-    "book_log_return_wap2_mean",
-    "book_log_return_wap2_std",
-    "book_log_return_wap2_abs_sum",
-    "book_log_return_wap2_rv",
-    "book_wap_balance_mean",
-    "book_wap_balance_std",
-    "book_wap_balance_abs_sum",
-    "book_price_spread1_sum",
-    "book_price_spread1_mean",
-    "book_price_spread1_std",
-    "book_price_spread2_sum",
-    "book_price_spread2_mean",
-    "book_price_spread2_std",
-    "book_bid_spread_sum",
-    "book_bid_spread_mean",
-    "book_bid_spread_std",
-    "book_ask_spread_sum",
-    "book_ask_spread_mean",
-    "book_ask_spread_std",
-    "book_bid_ask_spread_mean",
-    "book_bid_ask_spread_std",
-    "book_bid_ask_spread_abs_sum",
-    "book_total_volume_sum",
-    "book_total_volume_mean",
-    "book_total_volume_std",
-    "book_volume_imbalance_mean",
-    "book_volume_imbalance_std",
-    "book_volume_imbalance_abs_sum",
-    "book_log_return_wap1_rv_diff",
-    "book_log_return_wap1_rv_pct_change",
-    "book_log_return_wap2_rv_diff",
-    "book_log_return_wap2_rv_pct_change",
-    "book_last_300_log_return_wap1_rv",
-    "book_last_300_log_return_wap2_rv",
-    "trade_time_id_count",
-    "trade_price_mean",
-    "trade_price_std",
-    "trade_price_max_sub_min",
-    "trade_log_return_mean",
-    "trade_log_return_std",
-    "trade_log_return_abs_sum",
-    "trade_log_return_rv",
-    "trade_size_sum",
-    "trade_size_max_sub_min",
-    "trade_order_count_sum",
-    "trade_order_count_max_sub_min",
-    "trade_amount_sum",
-    "trade_amount_mean",
-    "trade_amount_std",
-    "trade_amount_max_sub_min",
-    "trade_size_div_order_count_mean",
-    "trade_size_div_order_count_std",
-    "trade_seconds_diff_mean",
-    "trade_seconds_diff_std",
-    "trade_seconds_diff_abs_sum",
-    "trade_seconds_diff_rv",
-    "trade_log_return_rv_diff",
-    "trade_log_return_rv_pct_change",
-    "trade_last_300_log_return_rv",
-    "trade_last_300_seconds_diff_rv",
-    "time_id_book_log_return_wap1_rv_mean",
-    "time_id_book_log_return_wap1_rv_std",
-    "time_id_book_log_return_wap2_rv_mean",
-    "time_id_book_log_return_wap2_rv_std",
-    "time_id_trade_log_return_rv_mean",
-    "time_id_trade_log_return_rv_std",
-    "time_id_trade_seconds_diff_rv_mean",
-    "time_id_trade_seconds_diff_rv_std",
-    "time_id_book_last_300_log_return_wap1_rv_mean",
-    "time_id_book_last_300_log_return_wap1_rv_std",
-    "time_id_book_last_300_log_return_wap2_rv_mean",
-    "time_id_book_last_300_log_return_wap2_rv_std",
-    "time_id_trade_last_300_log_return_rv_mean",
-    "time_id_trade_last_300_log_return_rv_std",
-    "time_id_trade_last_300_seconds_diff_rv_mean",
-    "time_id_trade_last_300_seconds_diff_rv_std",
-    "stock_id_book_log_return_wap1_rv_mean",
-    "stock_id_book_log_return_wap1_rv_std",
-    "stock_id_book_log_return_wap2_rv_mean",
-    "stock_id_book_log_return_wap2_rv_std",
-    "stock_id_trade_log_return_rv_mean",
-    "stock_id_trade_log_return_rv_std",
-    "stock_id_trade_seconds_diff_rv_mean",
-    "stock_id_trade_seconds_diff_rv_std",
-    "stock_id_book_last_300_log_return_wap1_rv_mean",
-    "stock_id_book_last_300_log_return_wap1_rv_std",
-    "stock_id_book_last_300_log_return_wap2_rv_mean",
-    "stock_id_book_last_300_log_return_wap2_rv_std",
-    "stock_id_trade_last_300_log_return_rv_mean",
-    "stock_id_trade_last_300_log_return_rv_std",
-    "stock_id_trade_last_300_seconds_diff_rv_mean",
-    "stock_id_trade_last_300_seconds_diff_rv_std",
-]
-print(f"Number of features: {len(feats)}")
-x_train = train[feats]
+print(f"Number of features: {len(GBM_FEATS)}")
+x_train = train[GBM_FEATS]
 y_train = train["target"].values
 
 kfold = KFold(n_splits=n_splits, shuffle=True, random_state=1024)
 
 stack_train = np.zeros(x_train.shape[0])
-feats_impt = np.zeros(len(feats))
+feats_impt = np.zeros(len(GBM_FEATS))
 rmspe_mean = 0
 
 
@@ -211,7 +88,7 @@ rmspe_mean /= n_splits
 
 np.save("../models/stack_train.npy", stack_train)
 
-importance = pd.DataFrame(zip(feats, feats_impt), columns=["feat", "score"]) \
+importance = pd.DataFrame(zip(GBM_FEATS, feats_impt), columns=["feat", "score"]) \
     .sort_values("score", ascending=False) \
     .reset_index(drop=True)
 importance.to_csv("../models/impt.csv", index=False)
