@@ -4,9 +4,9 @@ import lightgbm as lgb
 from sklearn.model_selection import KFold
 
 from feats import get_feat, get_time_stock_feat
-from config import GBM_FEATS
+from config import GBM_FEATS, STOCK_TO_IDX
 from utils.timer import Timer
-from utils.evaluate import rmspe, lgb_rmspe, lgb_rmse
+from utils.evaluate import rmspe
 # -------------------------------------------------------------------------------------------------
 
 
@@ -34,6 +34,7 @@ train = train[["row_id", "stock_id", "time_id", "target"]].merge(df_train, on="r
 del df_train
 
 train = get_time_stock_feat(train)
+train["stock_id_idx"] = train["stock_id"].map(STOCK_TO_IDX)
 
 timer.stop()
 # -------------------------------------------------------------------------------------------------
@@ -62,7 +63,7 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(x_train)):
         max_depth=7,
         num_leaves=80,
         min_child_weight=20,
-        n_estimators=3000,
+        n_estimators=2500,
         lambda_l2=1,
         bagging_freq=1,
         bagging_fraction=0.6,
@@ -73,6 +74,7 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(x_train)):
     )
     model.fit(
         x_train.iloc[train_idx], y_train[train_idx],
+        categorical_feature=["stock_id_idx"],
         sample_weight=1 / np.square(y_train[train_idx]),
     )
     y_valid = model.predict(x_train.iloc[valid_idx])

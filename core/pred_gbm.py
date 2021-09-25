@@ -5,7 +5,7 @@ import pandas as pd
 import lightgbm as lgb
 
 from feats import get_feat, get_time_stock_feat
-from config import GBM_FEATS
+from config import GBM_FEATS, STOCK_TO_IDX
 # -------------------------------------------------------------------------------------------------
 
 
@@ -28,6 +28,7 @@ test = test[["row_id", "stock_id", "time_id"]].merge(df_test, on="row_id", how="
 del df_test
 
 test = get_time_stock_feat(test)
+test["stock_id_idx"] = test["stock_id"].map(STOCK_TO_IDX)
 # -------------------------------------------------------------------------------------------------
 
 

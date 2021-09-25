@@ -1,4 +1,5 @@
 GBM_FEATS = [
+    "stock_id_idx",
     "book_time_id_count",
     "book_wap1_mean",
     "book_wap1_std",
