@@ -93,7 +93,7 @@ for idx, (train_idx, valid_idx) in enumerate(kfold.split(train)):
     # data preparation
     train_data = OptiverTrainDataset(cat_feats_tensor[train_idx], num_feats_tensor[train_idx], y_train[train_idx])
     valid_data = OptiverTrainDataset(cat_feats_tensor[valid_idx], num_feats_tensor[valid_idx], y_train[valid_idx])
-    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, drop_last=True, batch_size=256)
+    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, drop_last=True, batch_size=512)
     valid_loader = torch.utils.data.DataLoader(valid_data, shuffle=False, drop_last=False, batch_size=2048)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=5e-4)
