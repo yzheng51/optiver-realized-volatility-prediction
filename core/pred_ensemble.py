@@ -208,4 +208,3 @@ model3_pred = stack_test.copy()
 
 test["target"] = 0.2 * model1_pred + 0.4 * model2_pred + 0.4 * model3_pred
 test[["row_id", "target"]].to_csv("submission.csv", index=False)
-test[["row_id", "target"]]
