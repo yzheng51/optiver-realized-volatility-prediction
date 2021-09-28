@@ -1,3 +1,4 @@
+import os
 import time
 
 import numpy as np
@@ -11,6 +12,7 @@ from config import GBM_FEATS, STOCK_TO_IDX
 
 DATA_DIR = "../input/optiver-realized-volatility-prediction"
 TEST_FILE = f"{DATA_DIR}/test.csv"
+MODEL_DIR = "../input/orvplgb"
 
 dtypes = {"stock_id": "int16", "time_id": "int32", "target": "float64"}
 
@@ -40,7 +42,7 @@ stack_test = np.zeros(x_test.shape[0])
 
 for idx in range(n_splits):
     start = time.perf_counter()
-    model_path = f"../input/orvplgb/{idx + 1}.txt"
+    model_path = os.path.join(MODEL_DIR, f"{idx + 1}.txt")
     model = lgb.Booster(model_file=model_path)
     y_pred = model.predict(x_test)
 
