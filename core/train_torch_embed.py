@@ -161,7 +161,7 @@ for idx, (train_idx, valid_idx) in enumerate(kfold.split(train)):
             break
     print(f"RMSPE is {best_rmspe:.6f}\n")
 
-print(f"RMSE mean is: {np.mean(score_rmspe):.6f}")
+print(f"RMSPE mean is: {np.mean(score_rmspe):.6f}")
 
 timer.stop()
 
